@@ -420,6 +420,8 @@ vagrant ssh master <<-EOL
   echo "Welcome to Master node VM"
     
   # Display the content of test_data.txt in the master node
+  
+  echo "Displaying the content of test_data.txt in the master node"
   sudo cat /mnt/altschool/test_data.txt
 
   # Add a cron job for user 'altschool' to list processes on reboot
@@ -427,8 +429,9 @@ vagrant ssh master <<-EOL
 
   # SSH into the slave node from the master node and display the content of test_data.txt
   echo "Connecting to the slave node from the master node"
-  ssh vagrant@192.168.33.17 <<-EOS
+  ssh -o "StrictHostKeyChecking=no" vagrant@192.168.33.17 <<-EOS
     echo "Welcome to \$(whoami) node"
+    echo "Displaying the content of test_data.txt in the slave node"
     sudo cat /mnt/altschool/test_data.txt
     exit
   EOS
