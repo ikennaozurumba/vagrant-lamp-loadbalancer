@@ -37,9 +37,11 @@ echo ".................loggging output started at $(date).......................
 # Install relevant repositories to Advanced Package Tool Manager
 #================================================================================================
 echo "....................Adding Relevant Repositories to APT manager............................."
-sudo apt-get install -y software-properties-common apt-transport-https ca-certificates curl gnupg gpg
-sudo add-apt-repository -y ppa:ondrej/php
-sudo apt-get update
+sudo apt-get install -y software-properties-common apt-transport-https ca-certificates curl gnupg gpg || { echo "Failed to install initial dependencies"; exit 1;}
+
+sudo add-apt-repository -y ppa:ondrej/php || { echo "Failed to add PHP repository"; exit 1; }
+
+sudo apt-get update || { echo "Failed to update APT repositories"; exit 1; }
 
 
 #================================================================================================
@@ -62,10 +64,13 @@ else
 
 	# Update the package list
         echo ".......................Updating package list................................."
-	sudo apt-get update
+	sudo apt-get update || { echo "Failed to update APT repositories after adding VirtualBox"; exit 1; }
+
+
 	# Install VirtualBox
 	echo ".........................Installing VirtualBox.............................."
-	sudo apt-get install -y virtualbox-7.0
+	sudo apt-get install -y virtualbox-7.0 || { echo "Failed to install VirtualBox"; exit 1; }
+
 
 	# Confirm installation
 	if command -v VBoxManage --version > /dev/null; then
@@ -82,20 +87,23 @@ fi
 # check if the VM provider (vagrant) is installed
 #================================================================================================
 if command -v vagrant > /dev/null; then
-      	echo .........................."Vagrant is installed...................................."
+      	echo "..........................Vagrant is installed...................................."
 else
 	echo ".........................Vagrant is not installed, installing vagrant............."
+	
+	
 	# Adding the Hashicorp GPG key
-	curl -fsSL https://apt.releases.hashicorp.com/gpg | sudo gpg --yes --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+	curl -fsSL https://apt.releases.hashicorp.com/gpg | sudo gpg --yes --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg || { echo "Failed to add Hashicorp GPG Key"; exit 1; }
+
 	
 	# Adding official Hashicorp repository
-	echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/hashicorp.list
+	echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/hashicorp.list || { echo "Failed to add Hashicorp repository"; exit 1 }
 	
 	# Updating the package list
-        sudo apt-get update
+        sudo apt-get update || { echo "Failed to update APT repo after adding Hashicorp repository"; exit 1; }
     
 	# Installing Vagrant
-	sudo apt-get install -y vagrant
+	sudo apt-get install -y vagrant || { echo "Failed to install vagrant"; exit 1; }
 
 	# Confirming installation
 	if command -v vagrant > /dev/null; then
@@ -121,8 +129,9 @@ if [ -e "Vagrantfile" ]; then
 	echo ".........Vagrantfile already exists, overwriting its content.........................."
 else
 	echo "...........Vagrantfile does not exist, creating Vagrantfile.........................."
-	vagrant init || exit
+	vagrant init || exit 1
 fi
+
 
 # Overwrite or create Vagrantfile with the desired configuration
 
@@ -155,10 +164,11 @@ Vagrant.configure("2") do |config|
       echo "............Provisioning the load balancer node..........."
 
       # Update APT and install nginx
-      sudo apt-get update
-      sudo apt-get install -y nginx
+      sudo apt-get update || { echo "Failed to update APT repo before provisioning loadbalancer"; exit 1; }	
 
-      echo ".......Configuring nginx as a load balancer................"
+      sudo apt-get install -y nginx || { echo "Failed to install nginx"; exit 1; }
+
+      echo "........Configuring nginx as a load balancer................"
       sudo tee /etc/nginx/sites-available/default > /dev/null <<-EOL
         upstream lamp_cluster {
             server 192.168.33.16; # master node ip
@@ -178,6 +188,10 @@ Vagrant.configure("2") do |config|
             }
         }
       EOL
+      
+      # Restart nginx
+      echo ".......Restarting nginx to apply changes........"
+      sudo systemctl restart nginx || { echo "Failed to restart nginx after config"; exit 1; }
     SHELL
   end
 
@@ -200,7 +214,9 @@ Vagrant.configure("2") do |config|
       echo "...................Provisioning the master node............................."      
 
       # update and upgrade packages
-      sudo apt-get update && apt-get upgrade -y
+      sudo apt-get update || { echo "Failed to update APT repo before provisioning master node"; exit 1; }
+      sudo apt-get upgrade -y || { echo "Failed to upgrade packages before provisioning master node"; exit 1; } 
+
 
       # creating a user: altschool
       echo "......creating a user called altschool with the appropriate privileges........."
@@ -221,35 +237,43 @@ Vagrant.configure("2") do |config|
 	  exit 1
       fi
 
+      
       echo "....Granting altschool user root (superuser) privileges......."
-      echo "$USERNAME ALL=(ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/$USERNAME > /dev/null
+      sudo usermod -aG sudo "$USERNAME" || { echo "Failed to add user to sudo group; exit 1; }
+
+      # Create SSH directory and generate SSH keys
+      sudo mkdir -p -m 700 /home/"$USERNAME"/.ssh || { echo "Failed to create SSH directory"; exit 1; }
+
+      # Set correct ownership
+      sudo chown -R $USERNAME:$USERNAME /home/$USERNAME/.ssh
 
 
-      # switch user to $USERNAME and generate ssh key for connection with slave node
-      echo "......Generating id_rsa key for connection with the slave node........."
-      su - $USERNAME -c ' 
-      if [[ ! -f /home/$USERNAME/.ssh/id_rsa ]]; then
-        sudo mkdir -p /home/$USERNAME/.ssh
-        sudo chmod 700 /home/$USERNAME/.ssh
-        ssh-keygen -t rsa -b 4096 -f /home/$USERNAME/.ssh/id_rsa -q -N ""
-      fi
+      echo "............Generating SSH keys for the user: altschool................"
+      sudo -u "$USERNAME" ssh-keygen -t rsa -N '' -f /home/"$USERNAME"/.ssh/id_rsa -C "$USERNAME" -q || { echo "Failed to generate SSH keys"; exit 1; }
+      sudo chmod 600 /home/"$USERNAME"/.ssh/id_rsa || { echo "Failed to set permissions for private key"; exit 1; }
+      sudo chmod 644 /home/"$USERNAME"/.ssh/id_rsa.pub || { echo "Failed to set permissions for public key"; exit 1; }
+      
 
-      # Ensure permission for ssh key files
-      sudo chmod 600 /home/$USERNAME/.ssh/id_rsa
-      sudo chmod 644 /home/$USERNAME/.ssh/id_rsa.pub
+      # Copy id_rsa.pub key to the shared folder /vagrant for authentication with the slave node
       sudo cp /home/$USERNAME/.ssh/id_rsa.pub /vagrant/id_rsa.pub
+      sudo chmod 644 /vagrant/id_rsa.pub || { echo "Failed to set permissions for /vagrant/id_rsa.pub; exit 1; }
+      echo "...............Successfully generated and copied SSH keys......................."
 
 
-      # Copy the content of /mnt/altschool/ directory into the salve node
-      echo "..........Creating a /mnt/altschool/ directory.............................."
-      sudo mkdir -p -m 755 /mnt/$USERNAME/
+
+      # Create the /mnt/altschool/ directory and copy its content to the slave node
+      echo ".........Creating a /mnt/altschool/ directory..................."
+      
+      sudo mkdir -p -m 755 /mnt/$USERNAME/ || { echo "Failed to create directory /mnt/altschool"; exit 1; }
       sudo chown -R $USERNAME:$USERNAME /mnt/$USERNAME/
 
       echo "..........Creating a test_data.txt in /mnt/altschool directory.............."
       echo "This is a sample data, created at: $(date +%y/%m/%d' '%H:%M:%S) UTC" | sudo tee /mnt/$USERNAME/test_data.txt > /dev/null
+      sudo chown -R $USERNAME:$USERNAME /mnt/$USERNAME/test_data.txt
+
 
       sudo cp -R /mnt/$USERNAME/test_data.txt /vagrant
-      '
+     
 
       # Disable root login via ssh, set password auth to no, and enable pubkey auth
       sudo sed -i 's/^#PermitRootLogin prohibit-password/PermitRootLogin no/' "/etc/ssh/sshd_config"
@@ -260,7 +284,7 @@ Vagrant.configure("2") do |config|
 
       # Install, configure, and enable Apache, PHP, and MySQL
       echo "...............Installing Apache, PHP, and MySQL........................."
-      sudo apt-get update
+      sudo apt-get update || { echo "Failed to update before installing LAMP stack"; exit 1; }
       export DEBIAN_FRONTEND="noninteractive"
 
       echo "................Generating a random secure MySQL root password........................"
@@ -273,20 +297,29 @@ Vagrant.configure("2") do |config|
       sudo debconf-set-selections <<< "mysql-server mysql-server/root_password_again password $MYSQL_ROOT_PASSWORD"
 
       
-      sudo apt-get install -y apache2 mysql-server php libapache2-mod-php php-mysql
+      sudo apt-get install -y apache2 mysql-server php libapache2-mod-php php-mysql || { echo "Failed to install LAMP stack"; exit 1; }
+
+
+      echo "..........Enabling mod_rewrite for Apache................................"
+      sudo a2enmod rewrite || true
 
       # Starting and enabling Apache
       sudo systemctl start apache2
       sudo systemctl enable apache2
 
+
       # Secure MySQL installation
       echo ".................Disabling MySQL remote root login...................."
       sudo sed -i "s/.*bind-address.*/bind-address = 127.0.0.1/" /etc/mysql/mysql.conf.d/mysqld.cnf
 
-      echo ".................Dropping the test database if it exists.........................."
-      mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -e "DROP DATABASE IF EXISTS test;" || true
+      sudo systemctl restart mysql || { echo "failed to restart mysql"; exit 1; }
 
-      sudo systemctl restart mysql
+      # Show databases
+      mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -e "SHOW DATABASES;" || true
+
+      # Clean up package cache
+      sudo apt-get clean || true
+
 
       # Validate PHP functionality with Apache
       echo ".............validating php functionality....................................."
@@ -301,6 +334,10 @@ Vagrant.configure("2") do |config|
       echo "....................restarting apache2 webserver............................................"
       sudo systemctl restart apache2
 
+      # Add cron job to monitor processes
+      sudo touch /vagrant/cron_processes.txt
+      echo "..........Adding cron job to monitor processes.........................."
+      (sudo crontab -l 2>/dev/null; echo "@reboot ps aux >> /vagrant/cron_processes.txt") | sudo crontab -
 
     SHELL
 
@@ -318,20 +355,21 @@ Vagrant.configure("2") do |config|
     end
       
     # Provisioning script for slave node
-    slave.vm.provision "shell", inline: <<-SHELL
+    s.vm.provision "shell", inline: <<-SHELL
       echo "..........Provisioning the slave node......................."
      
-      # update and upgrade packages 
-      sudo apt-get update && apt-get upgrade -y
+      # update and upgrade packages
+      sudo apt-get update || { echo "Failed to update APT repo before provisioning slave node"; exit 1; }
+      sudo apt-get upgrade -y || { echo "Failed to upgrade packages before provisioning master node"; exit 1; } 
+
 
       # Ensure .ssh directory exists
-      mkdir -p /home/vagrant/.ssh
-      sudo chmod 700 /home/vagrant/.ssh
+      sudo mkdir -p -m 700 /home/vagrant/.ssh
       sudo chown -R vagrant:vagrant /home/vagrant/.ssh
 
       # Add master node altschool user public key to authorized_key file in the slave node
       echo ".............Adding id_rsa.pub key to the slave node......................."
-      if ! grep -q "$(cat /vagrant/id_rsa.pub)" /home/vagrant/.ssh/authorized_keys 2>/dev/null; then
+      if ! sudo grep -q "$(cat /vagrant/id_rsa.pub)" /home/vagrant/.ssh/authorized_keys 2>/dev/null; then
         echo -e "\n" | sudo tee -a /home/vagrant/.ssh/authorized_keys
         sudo cat /vagrant/id_rsa.pub | sudo tee -a /home/vagrant/.ssh/authorized_keys
         sudo chmod 600 /home/vagrant/.ssh/authorized_keys
@@ -342,7 +380,7 @@ Vagrant.configure("2") do |config|
       sudo sed -i 's/^#PermitRootLogin prohibit-password/PermitRootLogin no/' "/etc/ssh/sshd_config"
       sudo sed -i 's/^#PasswordAuthentication yes/PasswordAuthentication no/' "/etc/ssh/sshd_config"
       sudo sed -i 's/^#PubkeyAuthentication yes/PubkeyAuthentication yes/' "/etc/ssh/sshd_config"
-      sudo systemctl restart ssh || sudo service ssh restart
+      sudo systemctl restart ssh || { echo "Failed to restart ssh"; exit 1; }
 
 
 
@@ -361,12 +399,12 @@ Vagrant.configure("2") do |config|
       fi
 
 
-      # Install, configure, and enable Apache, PHP, and MySQL on slave node
-      echo "...............Installing Apache, PHP, and MySQL on slave node........................."
-      sudo apt-get update
+
+      echo "...............Installing Apache, PHP, and MySQL........................."
+      sudo apt-get update || { echo "Failed to update before installing LAMP stack in the slave node"; exit 1; }
       export DEBIAN_FRONTEND="noninteractive"
 
-      echo "................Generating a random secure MySQL root password........................"
+      echo "................Generating a random secure MySQL root password for the slave node..................."
       SQL_ROOT_PASSWORD="$(openssl rand -base64 12)" # Secure random password
 
       echo "........MySQL root password is: $SQL_ROOT_PASSWORD................................"
@@ -376,21 +414,29 @@ Vagrant.configure("2") do |config|
       sudo debconf-set-selections <<< "mysql-server mysql-server/root_password_again password $SQL_ROOT_PASSWORD"
 
       
-      sudo apt-get install -y apache2 mysql-server php libapache2-mod-php php-mysql
+      sudo apt-get install -y apache2 mysql-server php libapache2-mod-php php-mysql || { echo "Failed to install LAMP stack on the slave node"; exit 1; }
+
+
+      echo "..........Enabling mod_rewrite for Apache................................"
+      sudo a2enmod rewrite || true
 
       # Starting and enabling Apache
       sudo systemctl start apache2
       sudo systemctl enable apache2
 
+
       # Secure MySQL installation
       echo ".................Disabling MySQL remote root login...................."
-
       sudo sed -i "s/.*bind-address.*/bind-address = 127.0.0.1/" /etc/mysql/mysql.conf.d/mysqld.cnf
 
-      echo ".................Dropping the test database if it exists.........................."
-      mysql -uroot -p"$SQL_ROOT_PASSWORD" -e "DROP DATABASE IF EXISTS test;" || true
+      sudo systemctl restart mysql || { echo "failed to restart mysql"; exit 1; }
 
-      sudo systemctl restart mysql
+      # Show databases
+      mysql -uroot -p"$SQL_ROOT_PASSWORD" -e "SHOW DATABASES;" || true
+
+      # Clean up package cache
+      sudo apt-get clean || true
+
 
       # Validate PHP functionality with Apache
       echo ".............validating php functionality....................................."
@@ -424,8 +470,6 @@ vagrant ssh master <<-EOL
   echo "Displaying the content of test_data.txt in the master node"
   sudo cat /mnt/altschool/test_data.txt
 
-  # Add a cron job for user 'altschool' to list processes on reboot
-  sudo crontab -u altschool -l | { cat; echo "@reboot ps aux"; } | sudo crontab -u altschool -
 
   # SSH into the slave node from the master node and display the content of test_data.txt
   echo "Connecting to the slave node from the master node"
@@ -436,4 +480,7 @@ vagrant ssh master <<-EOL
     exit
   EOS
 EOL
+
+
+echo ".................Script Execution Complete......................."
 
