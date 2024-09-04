@@ -55,7 +55,7 @@ else
 
 	# Adding the Oracle VirtualBox repository to sources.list.d
 	echo "..............Adding VirtualBox repository to source.list.d..................."
-	DISTRO=$(lsb_release -cs)  # determining the distribution codename
+	DISTRO="$(lsb_release -cs)"  # determining the distribution codename
 	echo "deb [arch=amd64 signed-by=/usr/share/keyrings/oracle-virtualbox-2016.gpg] https://download.virtualbox.org/virtualbox/debian $DISTRO contrib" | sudo tee /etc/apt/sources.list.d/virtualbox.list
 	
 	# Download and add the Oracle public key
@@ -181,10 +181,10 @@ Vagrant.configure("2") do |config|
             
             location / {
 		proxy_pass http://lamp_cluster;
-		proxy_set_header Host \$host;
-		proxy_set_header X-Real-IP \$remote_addr;
-		proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        	proxy_set_header X-Forwarded-Proto \$scheme;
+		proxy_set_header Host $host;
+		proxy_set_header X-Real-IP $remote_addr;
+		proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        	proxy_set_header X-Forwarded-Proto $scheme;
             }
         }
       EOL
@@ -239,24 +239,24 @@ Vagrant.configure("2") do |config|
 
       
       echo "....Granting altschool user root (superuser) privileges......."
-      sudo usermod -aG sudo "$USERNAME" || { echo "Failed to add user to sudo group; exit 1; }
+      sudo usermod -aG sudo "$USERNAME" || { echo "Failed to add user to sudo group"; exit 1; }
 
       # Create SSH directory and generate SSH keys
-      sudo mkdir -p -m 700 /home/"$USERNAME"/.ssh || { echo "Failed to create SSH directory"; exit 1; }
+      sudo mkdir -p -m 700 "/home/$USERNAME/.ssh" || { echo "Failed to create SSH directory"; exit 1; }
 
       # Set correct ownership
-      sudo chown -R $USERNAME:$USERNAME /home/$USERNAME/.ssh
+      sudo chown -R "$USERNAME:$USERNAME" "/home/$USERNAME/.ssh"
 
 
       echo "............Generating SSH keys for the user: altschool................"
-      sudo -u "$USERNAME" ssh-keygen -t rsa -N '' -f /home/"$USERNAME"/.ssh/id_rsa -C "$USERNAME" -q || { echo "Failed to generate SSH keys"; exit 1; }
-      sudo chmod 600 /home/"$USERNAME"/.ssh/id_rsa || { echo "Failed to set permissions for private key"; exit 1; }
-      sudo chmod 644 /home/"$USERNAME"/.ssh/id_rsa.pub || { echo "Failed to set permissions for public key"; exit 1; }
+      sudo -u "$USERNAME" ssh-keygen -t rsa -N '' -f "/home/"$USERNAME"/.ssh/id_rsa" -C "$USERNAME" -q || { echo "Failed to generate SSH keys"; exit 1; }
+      sudo chmod 600 "/home/$USERNAME/.ssh/id_rsa" || { echo "Failed to set permissions for private key"; exit 1; }
+      sudo chmod 644 "/home/$USERNAME/.ssh/id_rsa.pub" || { echo "Failed to set permissions for public key"; exit 1; }
       
 
       # Copy id_rsa.pub key to the shared folder /vagrant for authentication with the slave node
-      sudo cp /home/$USERNAME/.ssh/id_rsa.pub /vagrant/id_rsa.pub
-      sudo chmod 644 /vagrant/id_rsa.pub || { echo "Failed to set permissions for /vagrant/id_rsa.pub; exit 1; }
+      sudo cp "/home/$USERNAME/.ssh/id_rsa.pub" /vagrant/id_rsa.pub
+      sudo chmod 644 /vagrant/id_rsa.pub || { echo "Failed to set permissions for /vagrant/id_rsa.pub"; exit 1; }
       echo "...............Successfully generated and copied SSH keys......................."
 
 
@@ -264,22 +264,25 @@ Vagrant.configure("2") do |config|
       # Create the /mnt/altschool/ directory and copy its content to the slave node
       echo ".........Creating a /mnt/altschool/ directory..................."
       
-      sudo mkdir -p -m 755 /mnt/$USERNAME/ || { echo "Failed to create directory /mnt/altschool"; exit 1; }
-      sudo chown -R $USERNAME:$USERNAME /mnt/$USERNAME/
-
-      echo "..........Creating a test_data.txt in /mnt/altschool directory.............."
-      echo "This is a sample data, created at: $(date +%y/%m/%d' '%H:%M:%S) UTC" | sudo tee /mnt/$USERNAME/test_data.txt > /dev/null
-      sudo chown -R $USERNAME:$USERNAME /mnt/$USERNAME/test_data.txt
+      sudo mkdir -p -m 755 "/mnt/$USERNAME/" || { echo "Failed to create directory /mnt/altschool"; exit 1; }
+      sudo chown -R "$USERNAME:$USERNAME" "/mnt/$USERNAME/"
 
 
-      sudo cp -R /mnt/$USERNAME/test_data.txt /vagrant
+      echo "..........Creating a test_data.txt in /mnt/$USERNAME directory.............."
+      sudo touch "/mnt/$USERNAME/test_data.txt"
+      sudo chmod 755 "/mnt/$USERNAME/test_data.txt"
+      echo "This is a sample data, created at: $(date +%y/%m/%d' '%H:%M:%S) UTC" | sudo tee "/mnt/$USERNAME/test_data.txt" > /dev/null
+      sudo chown -R "$USERNAME:$USERNAME" "/mnt/$USERNAME/test_data.txt"
+
+
+      sudo cp -R "/mnt/$USERNAME/test_data.txt" /vagrant
      
 
       # Disable root login via ssh, set password auth to no, and enable pubkey auth
       sudo sed -i 's/^#PermitRootLogin prohibit-password/PermitRootLogin no/' "/etc/ssh/sshd_config"
       sudo sed -i 's/^#PasswordAuthentication yes/PasswordAuthentication no/' "/etc/ssh/sshd_config"
       sudo sed -i 's/^#PubkeyAuthentication yes/PubkeyAuthentication yes/' "/etc/ssh/sshd_config"
-      sudo systemctl restart ssh || sudo service ssh restart
+      sudo systemctl restart ssh || { echo "Failed to restart ssh"; exit 1; }
 
 
       # Install, configure, and enable Apache, PHP, and MySQL
@@ -458,29 +461,43 @@ end
 __EOF__
 
 
+
 # Start the virtual machines
 vagrant up
 
-# SSH into the master node
+# SSH into the master node as the default vagrant user
 vagrant ssh master <<-EOL
-  echo "Welcome to Master node VM"
+  echo "......Welcome to Master node VM..........."
     
   # Display the content of test_data.txt in the master node
-  
   echo "Displaying the content of test_data.txt in the master node"
-  sudo cat /mnt/altschool/test_data.txt
+  sudo cat /mnt/altschool/test_data.txt || { echo "Failed to display the content of test_data.txt in master node"; exit 1; }
 
+  # Switch to the altschool user
+  sudo -u altschool -i <<-EOSU
 
-  # SSH into the slave node from the master node and display the content of test_data.txt
-  echo "Connecting to the slave node from the master node"
-  ssh -o "StrictHostKeyChecking=no" vagrant@192.168.33.17 <<-EOS
-    echo "Welcome to \$(whoami) node"
-    echo "Displaying the content of test_data.txt in the slave node"
-    sudo cat /mnt/altschool/test_data.txt
-    exit
-  EOS
+    # Test SSH connection to the slave node from the master node as 'altschool' user to 'vagrant' user on slave node
+    echo "......Testing SSH connection to the slave node from the master node as 'altschool' user..."
+    if ssh -o BatchMode=yes -o "StrictHostKeyChecking=no" vagrant@192.168.33.17 "echo SSH connection successful"; then
+        echo "SSH connection to the slave node successful."
+        
+        # SSH into the slave node from the master node as 'altschool' user to 'vagrant' user on slave node
+        echo "Connecting to the slave node from the master node"
+        ssh -o "StrictHostKeyChecking=no" vagrant@192.168.33.17 <<-EOSS
+          echo "Welcome to $(whoami) node"
+          echo "Displaying the content of test_data.txt in the slave node"
+          sudo cat /mnt/altschool/test_data.txt || { echo "Failed to display the content of test_data.txt in the slave node"; exit 1; }
+          exit
+        EOSS
+
+    else
+        echo "Error: SSH connection to the slave node failed. Please check the SSH key exchange or network connectivity." >&2
+        exit 1
+    fi
+
+  EOSU
+
 EOL
-
 
 echo ".................Script Execution Complete......................."
 
