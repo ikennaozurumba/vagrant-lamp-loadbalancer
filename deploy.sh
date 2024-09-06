@@ -387,18 +387,18 @@ Vagrant.configure("2") do |config|
 
 
 
-      # Copying the content of /mnt/altschool/ directory from vagrant into /mnt/altschool in the slave node
-      echo "..........Creating a /mnt/altschool/ directory in the slave node.............................."
-      sudo mkdir -p -m 755 /mnt/altschool/
-      sudo chown -R vagrant:vagrant /mnt/altschool/
+      # Copying the content of /mnt/altschool/ directory from vagrant into /mnt/altschool/slave in the slave node
+      echo "..........Creating a /mnt/altschool/slave directory in the slave node.............................."
+      sudo mkdir -p -m 755 /mnt/altschool/slave
+      sudo chown -R vagrant:vagrant /mnt/altschool/slave
 
 
       if [[ -f /vagrant/test_data.txt ]]; then
           echo "test_data.txt exist in /vagrant directory"
-          echo "copying test_data.txt to /mnt/altschool/ directory in the slave node"
-          sudo cp /vagrant/test_data.txt   /mnt/altschool/
+          echo "copying test_data.txt to /mnt/altschool/slave directory in the slave node"
+          sudo cp /vagrant/test_data.txt   /mnt/altschool/slave/
       else
-          echo "Could not copy test_data.txt into /mnt/altschol directory"
+          echo "Could not copy test_data.txt into /mnt/altschol/slave directory"
       fi
 
 
