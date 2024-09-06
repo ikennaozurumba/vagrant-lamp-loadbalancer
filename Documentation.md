@@ -716,9 +716,14 @@ echo ".................Script Execution Complete......................."
 
 
 **Troubleshooting**
-1. If the VMs fail to start, ensure that you have sufficient resources.
-2. Check the deploy.log and deploy_err.log files for detailed logs.
-3. Ensure that the SSH keys are correctly copied between the master and slave nodes.
+
+- If the VMs fail to start, ensure that you have sufficient resources.
+- Ensure all dependencies (Vagrant, VirtualBox, etc.) are installed correctly.
+- Run `vagrant up` manually if the script fails.
+- Check the VMs’ status using `vagrant status`.
+- Access individual VMs for troubleshooting via `vagrant ssh <vm_name>`.
+- Check the deploy.log and deploy_err.log files for detailed logs.
+- Ensure that the SSH keys are correctly copied between the master and slave nodes.
 
 
  
