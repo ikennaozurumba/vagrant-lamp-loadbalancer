@@ -121,7 +121,7 @@ fi
 
 
 #===================================================================================================
-# Vagrantfile configuration for master and slave node
+# Vagrantfile configuration for master, slave, and loadbalancer nodes
 #===================================================================================================
 
 # Check if Vagrantfile exists
