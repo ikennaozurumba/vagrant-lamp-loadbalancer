@@ -742,7 +742,7 @@ To contribute to this project, follow these steps:
 ## [References](#References)
 - [GitHub Repository for Vagrant](https://github.com/hashicorp/vagrant)
 - [Vagrant Documentation](https://www.vagrantup.com/docs)
-- [VirtualBox documentation]([https://github.com/laravel/laravel](https://www.virtualbox.org/wiki/VBoxInstallAndRun)
+- [VirtualBox Documentation](https://www.virtualbox.org/wiki/VBoxInstallAndRun)
 
 ## License
 This project is licensed under the MIT License. See the LICENSE file for more details.
